@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>mempool #6685 viewport probe</title>
+<style>
+  :root { --primary: #105fb0; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: #000; color: #fff;
+    font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+    overflow: hidden;
+  }
+
+  /* Mirrors frontend/src/app/components/tracker/tracker.component.scss */
+  .mobile-container {
+    width: 100vw;
+    height: 100vh;
+    height: 100svh;
+    max-width: 600px;
+    max-height: 1000px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: start;
+    position: relative;
+  }
+  .mobile-container > * { flex-shrink: 0; }
+
+  .header {
+    padding: 10px 12px;
+    background: #1d1f31;
+    font-size: 14px;
+    font-weight: bold;
+  }
+
+  .bottom-panel { flex-grow: 1; position: relative; }
+
+  /* readable slab, kept clear of the top status bar and the bottom chrome */
+  #out {
+    position: absolute;
+    top: 12px; left: 8px; right: 8px;
+    padding: 10px;
+    background: rgba(20, 22, 34, 0.96);
+    border: 1px solid #38406b;
+    border-radius: 6px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  #out b { color: #4ac700; }
+  #out .warn { color: #ffc107; }
+
+  /* ruler: ticks measured upward from the bottom of the 100svh box */
+  .ruler { position: absolute; left: 0; right: 0; bottom: 0; height: 220px; pointer-events: none; }
+  .tick {
+    position: absolute; left: 0; right: 0; height: 0;
+    border-top: 1px dashed rgba(255,255,255,0.55);
+  }
+  .tick span {
+    position: absolute; right: 4px; top: -15px;
+    font-size: 11px; color: #fff;
+    background: rgba(0,0,0,0.75); padding: 0 4px; border-radius: 3px;
+  }
+  .tick.major { border-top-color: #ff5252; }
+  .tick.major span { background: #ff5252; }
+
+  /* shows what iOS reports as the bottom safe area, if anything */
+  .safearea {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    height: env(safe-area-inset-bottom, 0px);
+    background: repeating-linear-gradient(45deg, #4ac70066, #4ac70066 6px, transparent 6px, transparent 12px);
+    border-top: 1px solid #4ac700;
+    pointer-events: none;
+  }
+
+  /* replica of .footer-link, the element reported as obscured in #6685 */
+  .footer-link {
+    display: flex; align-items: center; justify-content: center;
+    text-align: center;
+    padding: 0.5em;
+    background: var(--primary);
+    color: #fff;
+    font-size: 16px;
+  }
+</style>
+</head>
+<body>
+  <div class="mobile-container">
+    <div class="header">#6685 viewport probe</div>
+
+    <div class="bottom-panel">
+      <pre id="out">measuring…</pre>
+
+      <div class="ruler" id="ruler"></div>
+      <div class="safearea"></div>
+    </div>
+
+    <div class="footer-link" id="footer">See more details &rarr;</div>
+  </div>
+
+  <!-- offscreen probes: the only reliable way to read env() and viewport units -->
+  <div id="probes" style="position:absolute; visibility:hidden; width:1px; left:-9999px; top:0;">
+    <div id="p-vh"  style="height:100vh"></div>
+    <div id="p-svh" style="height:100svh"></div>
+    <div id="p-lvh" style="height:100lvh"></div>
+    <div id="p-dvh" style="height:100dvh"></div>
+    <div id="p-sat" style="height:env(safe-area-inset-top, 0px)"></div>
+    <div id="p-sab" style="height:env(safe-area-inset-bottom, 0px)"></div>
+  </div>
+
+<script>
+(function () {
+  var ruler = document.getElementById('ruler');
+  for (var px = 20; px <= 200; px += 20) {
+    var t = document.createElement('div');
+    t.className = 'tick' + (px % 60 === 0 ? ' major' : '');
+    t.style.bottom = px + 'px';
+    t.innerHTML = '<span>' + px + 'px up</span>';
+    ruler.appendChild(t);
+  }
+
+  function h(id) {
+    return Math.round(document.getElementById(id).getBoundingClientRect().height * 100) / 100;
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function render() {
+    var vv = window.visualViewport;
+    var fr = document.getElementById('footer').getBoundingClientRect();
+    var svh = h('p-svh');
+    var sab = h('p-sab');
+
+    var lines = [
+      'UA ' + esc(navigator.userAgent),
+      '',
+      'dpr            ' + window.devicePixelRatio,
+      'screen         ' + screen.width + ' x ' + screen.height,
+      'innerHeight    ' + window.innerHeight,
+      'clientHeight   ' + document.documentElement.clientHeight,
+      'vv.height      ' + (vv ? Math.round(vv.height * 100) / 100 : 'n/a'),
+      'vv.offsetTop   ' + (vv ? vv.offsetTop : 'n/a'),
+      'vv.pageTop     ' + (vv ? vv.pageTop : 'n/a'),
+      'vv.scale       ' + (vv ? vv.scale : 'n/a'),
+      '',
+      '100vh          ' + h('p-vh'),
+      '100svh         ' + svh + '   <-- used by .mobile-container',
+      '100lvh         ' + h('p-lvh'),
+      '100dvh         ' + h('p-dvh'),
+      '',
+      'safe-top       ' + h('p-sat'),
+      'safe-bottom    ' + (sab > 0
+          ? '<b>' + sab + '</b>  (reported!)'
+          : '<span class="warn">0  (NOT reported)</span>'),
+      '',
+      'footer top     ' + Math.round(fr.top),
+      'footer bottom  ' + Math.round(fr.bottom) + '   (should equal 100svh)',
+    ];
+
+    document.getElementById('out').innerHTML = lines.join('\n');
+  }
+
+  render();
+  addEventListener('resize', render);
+  addEventListener('orientationchange', render);
+  if (window.visualViewport) {
+    visualViewport.addEventListener('resize', render);
+    visualViewport.addEventListener('scroll', render);
+  }
+  // in-app browsers often settle their chrome a beat after load
+  setTimeout(render, 600);
+  setTimeout(render, 2000);
+})();
+</script>
+</body>
+</html>
