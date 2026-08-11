@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>#6685 — margin vs spacer, both tx states</title>
+<style>
+  :root { --primary: #105fb0; --bg: #24273e; --nav-bg: #1d1f31; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: #000; color: #fff;
+    font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  /* production-identical in every mode */
+  .mobile-container {
+    width: 100vw;
+    height: 100vh;
+    height: 100svh;
+    max-width: 600px;
+    max-height: 1000px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: start;
+    box-sizing: border-box;
+  }
+  .mobile-container > * { flex-shrink: 0; }
+
+  /* D — trailing margin on the CTA itself, no extra element */
+  .m-margin .footer-link { margin-bottom: max(0px, 100svh - 100dvh); }
+
+  /* A — real element after the CTA (inserted by JS only in this mode) */
+  .footer-inset { height: max(0px, 100svh - 100dvh); }
+
+  .nav-header { padding: 10px 12px; background: var(--nav-bg); }
+  .modes { display: flex; gap: 5px; margin-top: 8px; }
+  .modes button {
+    flex: 1; padding: 8px 3px; font: inherit; font-size: 12px;
+    background: #2c3050; color: #fff;
+    border: 1px solid #4a5080; border-radius: 5px;
+  }
+  .modes button.on { background: #4ac700; color: #000; font-weight: bold; border-color: #4ac700; }
+  .modes.states button.on { background: #ffb300; border-color: #ffb300; }
+
+  .field {
+    display: flex; justify-content: space-between;
+    padding: 9px 12px; background: var(--bg); font-size: 12px;
+  }
+  .field:nth-child(even) { background: #1b1e33; }
+
+  .bottom-panel { flex-grow: 1; display: flex; flex-direction: column; align-items: center; }
+
+  .accel { width: 100%; padding: 14px 12px; background: #1b1e33; border-top: 1px solid #333; }
+  .accel h2 { margin: 0 0 12px; font-size: 15px; }
+  .accel p { margin: 6px 0; color: #b0b4c8; font-size: 12px; }
+  .accel .btn { display: block; margin: 14px auto 0; padding: 10px 26px; background: #653b9c; border-radius: 20px; text-align: center; }
+  /* confirmed transactions render no accelerator, so the page does not scroll */
+  .s-confirmed .accel { display: none; }
+
+  .status-panel {
+    min-height: 180px; flex-grow: 1;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center; padding: 0 14px;
+  }
+
+  #out {
+    margin: 8px; padding: 8px 10px;
+    background: rgba(20,22,34,0.96);
+    border: 1px solid #38406b; border-radius: 6px;
+    white-space: pre-wrap; font-size: 12px; line-height: 1.5;
+  }
+  #out b { color: #4ac700; }
+  #out .bad { color: #ff5252; font-weight: bold; }
+
+  .footer-link {
+    display: flex; align-items: center; justify-content: center;
+    padding: 0.5em;
+    background: var(--primary); color: #fff; font-size: 16px;
+    border-top: 3px solid #4ac700;
+  }
+  .footer-link span { border-bottom: 3px solid #4ac700; }
+</style>
+</head>
+<body>
+  <div class="mobile-container m-margin s-pending" id="container">
+    <div class="nav-header">
+      <b>#6685 &mdash; margin vs spacer</b>
+      <div class="modes">
+        <button data-mode="m-none">nada<br>(hoy)</button>
+        <button data-mode="m-margin" class="on">margin<br>(cand. D)</button>
+        <button data-mode="m-spacer">spacer<br>(cand. A)</button>
+      </div>
+      <div class="modes states">
+        <button data-state="s-pending" class="on">pendiente (scroll)</button>
+        <button data-state="s-confirmed">confirmada (sin scroll)</button>
+      </div>
+    </div>
+
+    <div class="field"><span>Transaction</span><span>ec42a97c&hellip;d5bd</span></div>
+    <div class="field"><span>First seen</span><span>42 minutes ago</span></div>
+
+    <div class="bottom-panel">
+      <pre id="out">measuring&hellip;</pre>
+      <div class="accel">
+        <h2>Accelerate your Bitcoin transaction?</h2>
+        <p>&#9673; Wait &mdash; confirmation expected within ~20 minutes</p>
+        <p>&#9711; Accelerate to ~10 sat/vB &mdash; within ~11 minutes</p>
+        <p>$50.62 (79,000 sats)</p>
+        <div class="btn">Accelerate</div>
+      </div>
+      <div class="status-panel">
+        <div style="font-size:44px">&#8987;</div>
+        <span>Your transaction is near the top of the mempool.</span>
+      </div>
+    </div>
+
+    <div class="footer-link" id="footer"><span id="ftext">See more details &rarr;</span></div>
+  </div>
+
+  <div id="probes" style="position:absolute; visibility:hidden; width:1px; left:-9999px; top:0;">
+    <div id="p-svh" style="height:100svh"></div>
+    <div id="p-dvh" style="height:100dvh"></div>
+  </div>
+
+<script>
+(function () {
+  var container = document.getElementById('container');
+  var footer = document.getElementById('footer');
+  var ftext = document.getElementById('ftext');
+  var out = document.getElementById('out');
+  var inset = 'm-margin', state = 's-pending';
+
+  function h(id) {
+    return Math.round(document.getElementById(id).getBoundingClientRect().height * 100) / 100;
+  }
+
+  function apply() {
+    container.className = 'mobile-container ' + inset + ' ' + state;
+    // The spacer element must exist ONLY in spacer mode. A zero-height div left
+    // in the DOM would define the scrollable overflow by itself and make the
+    // margin mode look like it works when it does not.
+    var sp = container.querySelector('.footer-inset');
+    if (inset === 'm-spacer' && !sp) {
+      sp = document.createElement('div');
+      sp.className = 'footer-inset';
+      container.appendChild(sp);
+    } else if (inset !== 'm-spacer' && sp) {
+      sp.remove();
+    }
+    render();
+  }
+
+  function render() {
+    var svh = h('p-svh'), dvh = h('p-dvh');
+    var scrollVp = Math.max(window.innerHeight, svh);
+    var doc = document.documentElement;
+    var maxScroll = Math.max(0, doc.scrollHeight - scrollVp);
+    var remaining = Math.round(maxScroll - window.scrollY);
+    var tb = Math.round(ftext.getBoundingClientRect().bottom);
+    var pass = tb <= dvh + 2;
+    var scrolls = maxScroll > 2;
+
+    out.innerHTML = [
+      'inset mode    ' + inset,
+      'tx state      ' + state + (scrolls ? '   (page scrolls)' : '   (no scroll)'),
+      'inset value   ' + Math.round(Math.max(0, svh - dvh)) + 'px',
+      '',
+      '100svh        ' + svh,
+      '100dvh        ' + dvh,
+      'footer h      ' + Math.round(footer.getBoundingClientRect().height),
+      '',
+      'scroll left   ' + (!scrolls ? '<b>n/a</b>'
+                         : remaining <= 2 ? '<b>0 (at end)</b>'
+                         : remaining + 'px  <-- keep scrolling'),
+      'CTA text btm  ' + tb + '   (visible ends ' + Math.round(dvh) + ')',
+      (pass
+        ? '<b>PASS - CTA text visible</b>'
+        : '<span class="bad">FAIL - ' + (tb - Math.round(dvh)) + 'px below</span>')
+    ].join('\n');
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('.modes button'), function (b) {
+    b.addEventListener('click', function () {
+      var group = b.parentNode;
+      Array.prototype.forEach.call(group.querySelectorAll('button'),
+        function (o) { o.classList.remove('on'); });
+      b.classList.add('on');
+      if (b.dataset.mode) { inset = b.dataset.mode; } else { state = b.dataset.state; }
+      apply();
+    });
+  });
+
+  apply();
+  addEventListener('resize', render);
+  addEventListener('scroll', render, { passive: true });
+  addEventListener('orientationchange', render);
+  if (window.visualViewport) {
+    visualViewport.addEventListener('resize', render);
+    visualViewport.addEventListener('scroll', render);
+  }
+})();
+</script>
+</body>
+</html>
