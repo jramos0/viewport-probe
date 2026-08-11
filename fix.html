@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>#6685 fix candidate — 100dvh</title>
+<style>
+  :root { --primary: #105fb0; --bg: #24273e; --nav-bg: #1d1f31; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: #000; color: #fff;
+    font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+    overflow: hidden;
+  }
+
+  /* THE CANDIDATE FIX: 100dvh instead of 100svh */
+  .mobile-container {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    max-width: 600px;
+    max-height: 1000px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: start;
+  }
+  .mobile-container > * { flex-shrink: 0; }
+
+  .nav-header {
+    padding: 12px;
+    background: var(--nav-bg);
+    font-size: 14px;
+    font-weight: bold;
+  }
+  .field {
+    display: flex; justify-content: space-between;
+    padding: 10px 12px;
+    background: var(--bg);
+    font-size: 12px;
+  }
+  .field:nth-child(even) { background: #1b1e33; }
+
+  .bottom-panel {
+    flex-grow: 1;
+    position: relative;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+
+  #out {
+    position: absolute;
+    top: 8px; left: 8px; right: 8px;
+    padding: 8px 10px;
+    background: rgba(20, 22, 34, 0.96);
+    border: 1px solid #38406b;
+    border-radius: 6px;
+    white-space: pre-wrap; word-break: break-word;
+    font-size: 12px; line-height: 1.5;
+  }
+  #out b { color: #4ac700; }
+
+  /* ticks measured upward from the top of the footer */
+  .ruler { position: absolute; left: 0; right: 0; bottom: 0; height: 120px; pointer-events: none; }
+  .tick { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed rgba(255,255,255,0.55); }
+  .tick span {
+    position: absolute; right: 4px; top: -15px;
+    font-size: 11px; background: rgba(0,0,0,0.75);
+    padding: 0 4px; border-radius: 3px;
+  }
+  .tick.major { border-top-color: #ff5252; }
+  .tick.major span { background: #ff5252; }
+
+  .footer-link {
+    display: flex; align-items: center; justify-content: center;
+    text-align: center;
+    padding: 0.5em;
+    background: var(--primary);
+    color: #fff;
+    font-size: 16px;
+    /* high-contrast frame so any clipping is unmistakable in a screenshot */
+    border-top: 3px solid #4ac700;
+    border-bottom: 3px solid #4ac700;
+  }
+</style>
+</head>
+<body>
+  <div class="mobile-container">
+    <div class="nav-header">#6685 fix candidate &mdash; 100dvh</div>
+    <div class="field"><span>Transaction</span><span>f6a0e25d&hellip;7b7da</span></div>
+    <div class="field"><span>Block height</span><span>961185</span></div>
+
+    <div class="bottom-panel">
+      <pre id="out">measuring&hellip;</pre>
+      <div class="ruler" id="ruler"></div>
+    </div>
+
+    <div class="footer-link" id="footer">See more details &rarr;</div>
+  </div>
+
+  <div id="probes" style="position:absolute; visibility:hidden; width:1px; left:-9999px; top:0;">
+    <div id="p-svh" style="height:100svh"></div>
+    <div id="p-dvh" style="height:100dvh"></div>
+  </div>
+
+<script>
+(function () {
+  var ruler = document.getElementById('ruler');
+  for (var p = 20; p <= 100; p += 20) {
+    var t = document.createElement('div');
+    t.className = 'tick' + (p % 60 === 0 ? ' major' : '');
+    t.style.bottom = p + 'px';
+    t.innerHTML = '<span>' + p + 'px up</span>';
+    ruler.appendChild(t);
+  }
+
+  function h(id) {
+    return Math.round(document.getElementById(id).getBoundingClientRect().height * 100) / 100;
+  }
+
+  function render() {
+    var fr = document.getElementById('footer').getBoundingClientRect();
+    document.getElementById('out').innerHTML = [
+      'container uses <b>100dvh</b>',
+      '',
+      '100svh        ' + h('p-svh') + '   (old, broken in X)',
+      '100dvh        ' + h('p-dvh') + '   (new)',
+      'innerHeight   ' + window.innerHeight,
+      '',
+      'footer top    ' + Math.round(fr.top),
+      'footer bottom ' + Math.round(fr.bottom),
+      '',
+      'PASS if the whole green-bordered blue',
+      'bar is visible and readable.'
+    ].join('\n');
+  }
+
+  render();
+  addEventListener('resize', render);
+  addEventListener('orientationchange', render);
+  if (window.visualViewport) {
+    visualViewport.addEventListener('resize', render);
+    visualViewport.addEventListener('scroll', render);
+  }
+  setTimeout(render, 600);
+  setTimeout(render, 2000);
+})();
+</script>
+</body>
+</html>
