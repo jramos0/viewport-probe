@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>#6685 fix candidate 2 — min(svh, dvh)</title>
+<style>
+  :root { --primary: #105fb0; --bg: #24273e; --nav-bg: #1d1f31; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: #000; color: #fff;
+    font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  /* three candidates, switchable live on the device */
+  .mobile-container            { height: 100vh; }
+  .mobile-container.m-svh      { height: 100svh; }
+  .mobile-container.m-dvh      { height: 100dvh; }
+  .mobile-container.m-min      { height: min(100svh, 100dvh); }
+
+  .mobile-container {
+    width: 100vw;
+    max-width: 600px;
+    max-height: 1000px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: start;
+  }
+  .mobile-container > * { flex-shrink: 0; }
+
+  .nav-header { padding: 10px 12px; background: var(--nav-bg); }
+  .modes { display: flex; gap: 6px; margin-top: 8px; }
+  .modes button {
+    flex: 1; padding: 9px 4px;
+    font: inherit; font-size: 12px;
+    background: #2c3050; color: #fff;
+    border: 1px solid #4a5080; border-radius: 5px;
+  }
+  .modes button.on { background: #4ac700; color: #000; font-weight: bold; border-color: #4ac700; }
+
+  .field {
+    display: flex; justify-content: space-between;
+    padding: 9px 12px; background: var(--bg); font-size: 12px;
+  }
+  .field:nth-child(even) { background: #1b1e33; }
+
+  .bottom-panel {
+    flex-grow: 1;
+    display: flex; flex-direction: column; align-items: center;
+  }
+
+  /* stands in for <app-accelerate-checkout>, which is what makes the real
+     tracker overflow and scroll on an unconfirmed transaction */
+  .accel {
+    width: 100%; padding: 14px 12px;
+    background: #1b1e33; border-top: 1px solid #333;
+  }
+  .accel h2 { margin: 0 0 12px; font-size: 15px; }
+  .accel p { margin: 6px 0; color: #b0b4c8; font-size: 12px; }
+  .accel .btn {
+    display: block; margin: 14px auto 0; padding: 10px 26px;
+    background: #653b9c; border-radius: 20px; text-align: center;
+  }
+  .status-panel {
+    min-height: 180px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center; padding: 0 14px;
+  }
+
+  #out {
+    margin: 8px; padding: 8px 10px;
+    background: rgba(20,22,34,0.96);
+    border: 1px solid #38406b; border-radius: 6px;
+    white-space: pre-wrap; font-size: 12px; line-height: 1.5;
+  }
+  #out b { color: #4ac700; }
+  #out .bad { color: #ff5252; font-weight: bold; }
+
+  .footer-link {
+    display: flex; align-items: center; justify-content: center;
+    padding: 0.5em; background: var(--primary); color: #fff;
+    font-size: 16px;
+    border-top: 3px solid #4ac700;
+    border-bottom: 3px solid #4ac700;
+  }
+</style>
+</head>
+<body>
+  <div class="mobile-container m-min" id="container">
+    <div class="nav-header">
+      <b>#6685 &mdash; scroll + viewport test</b>
+      <div class="modes">
+        <button data-mode="m-svh">100svh<br>(hoy)</button>
+        <button data-mode="m-dvh">100dvh<br>(cand. 1)</button>
+        <button data-mode="m-min" class="on">min()<br>(cand. 2)</button>
+      </div>
+    </div>
+
+    <div class="field"><span>Transaction</span><span>ec42a97c&hellip;d5bd</span></div>
+    <div class="field"><span>First seen</span><span>42 minutes ago</span></div>
+    <div class="field"><span>ETA</span><span>In ~20 minutes</span></div>
+
+    <div class="bottom-panel">
+      <pre id="out">measuring&hellip;</pre>
+
+      <div class="accel">
+        <h2>Accelerate your Bitcoin transaction?</h2>
+        <p>&#9673; Wait &mdash; confirmation expected within ~20 minutes</p>
+        <p>&#9711; Accelerate to ~10 sat/vB &mdash; within ~11 minutes</p>
+        <p>$50.62 (79,000 sats)</p>
+        <div class="btn">Accelerate</div>
+      </div>
+
+      <div class="status-panel">
+        <div style="font-size:44px">&#8987;</div>
+        <span>Your transaction is near the top of the mempool.</span>
+      </div>
+    </div>
+
+    <div class="footer-link" id="footer">See more details &rarr;</div>
+  </div>
+
+  <div id="probes" style="position:absolute; visibility:hidden; width:1px; left:-9999px; top:0;">
+    <div id="p-svh" style="height:100svh"></div>
+    <div id="p-dvh" style="height:100dvh"></div>
+    <div id="p-lvh" style="height:100lvh"></div>
+  </div>
+
+<script>
+(function () {
+  var container = document.getElementById('container');
+  var out = document.getElementById('out');
+  var seen, changes;
+
+  function h(id) {
+    return Math.round(document.getElementById(id).getBoundingClientRect().height * 100) / 100;
+  }
+
+  function reset() {
+    seen = null;
+    changes = 0;
+  }
+  reset();
+
+  function render() {
+    var ch = Math.round(container.getBoundingClientRect().height);
+    if (seen === null) seen = ch;
+    else if (ch !== seen) { changes++; seen = ch; }
+
+    var mode = container.className.replace('mobile-container ', '');
+    out.innerHTML = [
+      'mode          ' + mode,
+      'container     ' + ch + 'px',
+      '',
+      '100svh        ' + h('p-svh'),
+      '100dvh        ' + h('p-dvh'),
+      '100lvh        ' + h('p-lvh'),
+      'innerHeight   ' + window.innerHeight,
+      '',
+      'resizes while scrolling: ' +
+        (changes === 0 ? '<b>0  (stable)</b>' : '<span class="bad">' + changes + '  (JANK)</span>'),
+      '',
+      'Scroll down to the blue bar.',
+      'Both green borders must be visible.'
+    ].join('\n');
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('.modes button'), function (b) {
+    b.addEventListener('click', function () {
+      Array.prototype.forEach.call(document.querySelectorAll('.modes button'),
+        function (o) { o.classList.remove('on'); });
+      b.classList.add('on');
+      container.className = 'mobile-container ' + b.dataset.mode;
+      reset();
+      render();
+    });
+  });
+
+  render();
+  addEventListener('resize', render);
+  addEventListener('scroll', render, { passive: true });
+  addEventListener('orientationchange', render);
+  if (window.visualViewport) {
+    visualViewport.addEventListener('resize', render);
+    visualViewport.addEventListener('scroll', render);
+  }
+})();
+</script>
+</body>
+</html>
